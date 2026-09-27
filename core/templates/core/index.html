@@ -1,0 +1,245 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container app-container">
+
+    <!-- Hero Header -->
+    <section class="hero-section text-center">
+        <div class="hero-badge">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Studio-Grade Audio Extraction
+        </div>
+        <h1 class="hero-title">Download YouTube Audio in <span class="gradient-text">Ultra High Quality</span></h1>
+        <p class="hero-desc">Extract pure audio streams from YouTube videos and Shorts in 320kbps MP3, M4A, or WAV without downloading video frames.</p>
+    </section>
+
+    <!-- Main Downloader Converter Box -->
+    <section class="converter-wrapper">
+        <div class="converter-card glass-panel">
+            
+            <!-- URL Input Group -->
+            <div class="url-input-container">
+                <label for="youtube-url-input" class="input-label">
+                    <i class="fa-brands fa-youtube icon-yt"></i> Enter YouTube Video / Shorts URL
+                </label>
+                <div class="input-row">
+                    <div class="input-field-wrapper">
+                        <i class="fa-solid fa-link input-prefix-icon"></i>
+                        <input type="text" id="youtube-url-input" placeholder="Paste link here (e.g. https://www.youtube.com/watch?v=...)" autocomplete="off" spellcheck="false">
+                        <button type="button" id="btn-clear-url" class="btn-clear" title="Clear input" style="display: none;">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <button type="button" id="btn-paste" class="btn-secondary" title="Paste from clipboard">
+                        <i class="fa-regular fa-paste"></i> Paste
+                    </button>
+                    <button type="button" id="btn-fetch-info" class="btn-accent">
+                        <i class="fa-solid fa-magnifying-glass"></i> <span class="btn-text">Fetch Info</span>
+                    </button>
+                </div>
+                <div id="url-feedback" class="url-feedback"></div>
+            </div>
+
+            <!-- Video Information Preview Card (Initially hidden) -->
+            <div id="video-preview-card" class="video-preview-card" style="display: none;">
+                <div class="thumbnail-wrapper">
+                    <img id="video-thumb" src="" alt="Thumbnail" class="video-thumb">
+                    <span id="video-duration" class="badge-duration">00:00</span>
+                </div>
+                <div class="video-meta">
+                    <h3 id="video-title" class="video-title">Video Title</h3>
+                    <div class="video-author">
+                        <i class="fa-solid fa-circle-user"></i> <span id="video-channel">Channel Name</span>
+                    </div>
+                    <div class="meta-tags">
+                        <span class="meta-tag"><i class="fa-regular fa-eye"></i> <span id="video-views">0 views</span></span>
+                        <span class="meta-tag"><i class="fa-regular fa-calendar"></i> <span id="video-date">Uploaded</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Format & Quality Options -->
+            <div class="options-container">
+                <!-- Format Selector -->
+                <div class="option-group">
+                    <label class="option-label"><i class="fa-solid fa-sliders"></i> Choose Audio Format</label>
+                    <div class="format-pills" id="format-selector">
+                        <button type="button" class="pill-btn active" data-format="mp3">
+                            <i class="fa-solid fa-file-audio"></i> MP3
+                        </button>
+                        <button type="button" class="pill-btn" data-format="m4a">
+                            <i class="fa-solid fa-music"></i> M4A
+                        </button>
+                        <button type="button" class="pill-btn" data-format="wav">
+                            <i class="fa-solid fa-wave-square"></i> WAV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bitrate Quality (MP3) -->
+                <div class="option-group" id="quality-option-group">
+                    <label class="option-label"><i class="fa-solid fa-gauge-high"></i> MP3 Audio Bitrate</label>
+                    <div class="quality-pills" id="quality-selector">
+                        <button type="button" class="pill-btn active" data-quality="320">
+                            320 kbps <span class="pill-badge">Studio</span>
+                        </button>
+                        <button type="button" class="pill-btn" data-quality="192">
+                            192 kbps <span class="pill-badge">Standard</span>
+                        </button>
+                        <button type="button" class="pill-btn" data-quality="128">
+                            128 kbps <span class="pill-badge">Eco</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Download Action Button -->
+            <div class="action-container">
+                <button type="button" id="btn-start-download" class="btn-download-main">
+                    <span class="btn-download-content">
+                        <i class="fa-solid fa-cloud-arrow-down download-icon-anim"></i>
+                        <span>Start Audio Download</span>
+                    </span>
+                </button>
+            </div>
+
+            <!-- Real-Time Progress Box (Hidden by default) -->
+            <div id="progress-box" class="progress-box" style="display: none;">
+                <div class="progress-header">
+                    <span id="progress-status-msg" class="progress-status-msg">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Initializing download stream...
+                    </span>
+                    <span id="progress-percentage" class="progress-percentage">0%</span>
+                </div>
+
+                <div class="progress-bar-bg">
+                    <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+
+                <div class="progress-metrics-grid">
+                    <div class="metric-item">
+                        <span class="metric-label"><i class="fa-solid fa-gauge"></i> Speed</span>
+                        <span id="metric-speed" class="metric-val">-- MB/s</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label"><i class="fa-solid fa-database"></i> Size</span>
+                        <span id="metric-size" class="metric-val">-- / --</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label"><i class="fa-solid fa-hourglass-half"></i> ETA</span>
+                        <span id="metric-eta" class="metric-val">--:--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Download Result (Hidden by default) -->
+            <div id="download-success-card" class="download-success-card" style="display: none;">
+                <div class="success-icon-box">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <div class="success-info">
+                    <h4 id="success-title" class="success-title">Audio File Ready</h4>
+                    <p id="success-meta" class="success-meta">MP3 (320kbps) • 8.4 MB</p>
+                </div>
+                <div class="success-actions">
+                    <a id="btn-direct-download" href="#" class="btn-success-download">
+                        <i class="fa-solid fa-download"></i> Save to Computer
+                    </a>
+                    <button type="button" id="btn-convert-another" class="btn-secondary">
+                        <i class="fa-solid fa-rotate-right"></i> Convert Another
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Key Feature Highlights -->
+    <section class="features-grid">
+        <div class="feature-card glass-panel">
+            <div class="feature-icon"><i class="fa-solid fa-bolt-lightning"></i></div>
+            <h3>Pure Audio Stream</h3>
+            <p>Downloads only audio stream tracks from YouTube servers, saving high data bandwidth and accelerating speeds.</p>
+        </div>
+        <div class="feature-card glass-panel">
+            <div class="feature-icon"><i class="fa-solid fa-compact-disc"></i></div>
+            <h3>320kbps Hi-Res MP3</h3>
+            <p>Encodes audio using FFmpeg with maximum fidelity, full stereo depth, and preserved audio metadata.</p>
+        </div>
+        <div class="feature-card glass-panel">
+            <div class="feature-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <h3>Clean & Ad-Free</h3>
+            <p>Direct download without spam redirects, intrusive popups, or required registrations.</p>
+        </div>
+    </section>
+
+    <!-- Download History Section -->
+    <section id="history-section" class="history-section">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Recent Downloads</h2>
+                <p class="section-subtitle">Tracks downloaded in this session</p>
+            </div>
+            <div class="history-controls">
+                <button type="button" id="btn-refresh-history" class="btn-sm btn-secondary">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+                <button type="button" id="btn-clear-history" class="btn-sm btn-danger">
+                    <i class="fa-solid fa-trash-can"></i> Clear All
+                </button>
+            </div>
+        </div>
+
+        <div class="history-card-container glass-panel" id="history-list">
+            {% if recent_downloads %}
+                {% for item in recent_downloads %}
+                <div class="history-item">
+                    <div class="history-badge badge-{{ item.audio_format|lower }}">
+                        {{ item.audio_format }}
+                    </div>
+                    <div class="history-info">
+                        <h4 class="history-title">{{ item.title }}</h4>
+                        <div class="history-sub">
+                            <span><i class="fa-regular fa-user"></i> {{ item.channel }}</span>
+                            <span>• {{ item.quality }}</span>
+                            <span>• {{ item.file_size }}</span>
+                            <span>• {{ item.created_at|date:"M d, H:i" }}</span>
+                        </div>
+                    </div>
+                    <div class="history-actions">
+                        <span class="history-file-name" title="{{ item.file_name }}">{{ item.file_name }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-history" id="empty-history-placeholder">
+                    <i class="fa-solid fa-music empty-icon"></i>
+                    <p>No downloads recorded yet. Paste a link above to get started!</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- FFmpeg Setup Modal -->
+    <div id="ffmpeg-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-film"></i> FFmpeg Media Engine Setup</h3>
+                <button type="button" id="btn-close-ffmpeg-modal" class="btn-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p>FFmpeg is required to convert YouTube streams into MP3, M4A, and WAV files.</p>
+                <div class="code-box">
+                    <span class="code-title">1-Step Windows Install (PowerShell as Admin):</span>
+                    <code>winget install Gyan.FFmpeg</code>
+                </div>
+                <p class="modal-note">Or place <code>ffmpeg.exe</code> inside the project root folder. The application detects it automatically.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="btn-dismiss-modal" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
