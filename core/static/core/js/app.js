@@ -110,6 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnFetchInfo.addEventListener('click', fetchVideoMetadata);
 
+    const qualityLabel = document.getElementById('quality-label');
+    const audioQualitySelector = document.getElementById('audio-quality-selector');
+    const videoQualitySelector = document.getElementById('video-quality-selector');
+    const btnDownloadText = document.querySelector('.btn-download-content span');
+
     // --- Format & Bitrate Selectors ---
     formatSelector.querySelectorAll('.pill-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -117,20 +122,49 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
             selectedFormat = btn.getAttribute('data-format');
 
-            // Toggle MP3 Bitrate options
-            if (selectedFormat === 'mp3') {
+            if (selectedFormat === 'mp4') {
                 qualityOptionGroup.style.opacity = '1';
                 qualityOptionGroup.style.pointerEvents = 'auto';
+                qualityLabel.innerHTML = '<i class="fa-solid fa-video"></i> MP4 Video Resolution';
+                audioQualitySelector.style.display = 'none';
+                videoQualitySelector.style.display = 'flex';
+                
+                // Get active video quality
+                const activeVideoBtn = videoQualitySelector.querySelector('.pill-btn.active');
+                selectedQuality = activeVideoBtn ? activeVideoBtn.getAttribute('data-quality') : '1080';
+                if (btnDownloadText) btnDownloadText.textContent = 'Start Video Download (MP4)';
+            } else if (selectedFormat === 'mp3') {
+                qualityOptionGroup.style.opacity = '1';
+                qualityOptionGroup.style.pointerEvents = 'auto';
+                qualityLabel.innerHTML = '<i class="fa-solid fa-gauge-high"></i> MP3 Audio Bitrate';
+                audioQualitySelector.style.display = 'flex';
+                videoQualitySelector.style.display = 'none';
+                
+                // Get active audio quality
+                const activeAudioBtn = audioQualitySelector.querySelector('.pill-btn.active');
+                selectedQuality = activeAudioBtn ? activeAudioBtn.getAttribute('data-quality') : '320';
+                if (btnDownloadText) btnDownloadText.textContent = 'Start Audio Download (MP3)';
             } else {
                 qualityOptionGroup.style.opacity = '0.4';
                 qualityOptionGroup.style.pointerEvents = 'none';
+                qualityLabel.innerHTML = `<i class="fa-solid fa-sliders"></i> ${selectedFormat.toUpperCase()} Quality`;
+                selectedQuality = '320';
+                if (btnDownloadText) btnDownloadText.textContent = `Start Audio Download (${selectedFormat.toUpperCase()})`;
             }
         });
     });
 
-    qualitySelector.querySelectorAll('.pill-btn').forEach(btn => {
+    audioQualitySelector.querySelectorAll('.pill-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            qualitySelector.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+            audioQualitySelector.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedQuality = btn.getAttribute('data-quality');
+        });
+    });
+
+    videoQualitySelector.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            videoQualitySelector.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             selectedQuality = btn.getAttribute('data-quality');
         });

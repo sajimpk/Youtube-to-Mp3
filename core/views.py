@@ -61,11 +61,13 @@ def api_start_download(request):
     if not url or not URLValidator.is_valid_youtube_url(url):
         return JsonResponse({'success': False, 'error': 'Valid YouTube URL required.'}, status=400)
 
-    if audio_format not in ['mp3', 'm4a', 'wav']:
+    allowed_formats = ['mp3', 'mp4', 'm4a', 'wav', 'mkv']
+    if audio_format not in allowed_formats:
         audio_format = 'mp3'
 
-    if quality not in ['128', '192', '320']:
-        quality = '320'
+    allowed_qualities = ['1080', '720', '480', '360', '320', '192', '128']
+    if quality not in allowed_qualities:
+        quality = '1080' if audio_format in ['mp4', 'mkv'] else '320'
 
     # Create task and launch asynchronous downloader
     task_id = DownloadTaskManager.create_task(url, audio_format, quality)

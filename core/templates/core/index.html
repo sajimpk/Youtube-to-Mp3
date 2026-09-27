@@ -58,14 +58,17 @@
                 </div>
             </div>
 
-            <!-- Audio Format & Quality Options -->
+            <!-- Media Format & Quality Options -->
             <div class="options-container">
                 <!-- Format Selector -->
                 <div class="option-group">
-                    <label class="option-label"><i class="fa-solid fa-sliders"></i> Choose Audio Format</label>
+                    <label class="option-label"><i class="fa-solid fa-sliders"></i> Choose Media Format</label>
                     <div class="format-pills" id="format-selector">
                         <button type="button" class="pill-btn active" data-format="mp3">
-                            <i class="fa-solid fa-file-audio"></i> MP3
+                            <i class="fa-solid fa-file-audio"></i> MP3 <span class="pill-badge">Audio</span>
+                        </button>
+                        <button type="button" class="pill-btn" data-format="mp4">
+                            <i class="fa-solid fa-file-video"></i> MP4 <span class="pill-badge video-badge">Video</span>
                         </button>
                         <button type="button" class="pill-btn" data-format="m4a">
                             <i class="fa-solid fa-music"></i> M4A
@@ -76,10 +79,12 @@
                     </div>
                 </div>
 
-                <!-- Bitrate Quality (MP3) -->
+                <!-- Dynamic Quality Selector (Audio Bitrate or Video Resolution) -->
                 <div class="option-group" id="quality-option-group">
-                    <label class="option-label"><i class="fa-solid fa-gauge-high"></i> MP3 Audio Bitrate</label>
-                    <div class="quality-pills" id="quality-selector">
+                    <label class="option-label" id="quality-label"><i class="fa-solid fa-gauge-high"></i> MP3 Bitrate Quality</label>
+                    
+                    <!-- MP3 Audio Bitrate Pills -->
+                    <div class="quality-pills" id="audio-quality-selector">
                         <button type="button" class="pill-btn active" data-quality="320">
                             320 kbps <span class="pill-badge">Studio</span>
                         </button>
@@ -88,6 +93,22 @@
                         </button>
                         <button type="button" class="pill-btn" data-quality="128">
                             128 kbps <span class="pill-badge">Eco</span>
+                        </button>
+                    </div>
+
+                    <!-- MP4 Video Resolution Pills (Initially hidden) -->
+                    <div class="quality-pills" id="video-quality-selector" style="display: none;">
+                        <button type="button" class="pill-btn active" data-quality="1080">
+                            1080p <span class="pill-badge video-badge">FHD</span>
+                        </button>
+                        <button type="button" class="pill-btn" data-quality="720">
+                            720p <span class="pill-badge video-badge">HD</span>
+                        </button>
+                        <button type="button" class="pill-btn" data-quality="480">
+                            480p <span class="pill-badge">SD</span>
+                        </button>
+                        <button type="button" class="pill-btn" data-quality="360">
+                            360p
                         </button>
                     </div>
                 </div>

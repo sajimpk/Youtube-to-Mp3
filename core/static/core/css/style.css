@@ -542,10 +542,20 @@ body {
 
 .pill-badge {
     font-size: 10px;
-    background: rgba(0,0,0,0.15);
+    background: rgba(0,0,0,0.12);
     padding: 2px 5px;
     border-radius: 4px;
 }
+
+.pill-badge.video-badge {
+    background: #2563EB;
+    color: white;
+}
+
+.badge-mp3 { background: #FF0033; }
+.badge-mp4 { background: #2563EB; }
+.badge-m4a { background: #4F46E5; }
+.badge-wav { background: #059669; }
 
 /* Download CTA Button */
 .action-container {

@@ -338,14 +338,17 @@ class DownloadTaskManager:
                     message=f"Converting audio to {audio_format.upper()} via FFmpeg..."
                 )
 
+        is_video = audio_format in ['mp4', 'mkv']
+        
         def postprocessor_hook(d: Dict[str, Any]):
             status = d.get('status')
             if status == 'started':
+                action_text = "Merging video & audio streams" if is_video else f"Extracting & encoding {audio_format.upper()}"
                 cls.update_task(
                     task_id,
                     status='converting',
                     progress=97.0,
-                    message=f"Extracting & encoding {audio_format.upper()}..."
+                    message=f"{action_text} via FFmpeg..."
                 )
             elif status == 'finished':
                 info_dict = d.get('info_dict', {})
@@ -356,28 +359,49 @@ class DownloadTaskManager:
                     task_id,
                     status='finalizing',
                     progress=99.0,
-                    message="Finalizing audio tags & metadata..."
+                    message="Finalizing media metadata..."
                 )
 
-        # Build yt-dlp options
-        postprocessors = [
-            {
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': audio_format,
-                'preferredquality': audio_quality if audio_format == 'mp3' else None,
-                'nopostoverwrites': False,
-            },
-            {
-                'key': 'FFmpegMetadata',
-                'add_metadata': True,
-            }
-        ]
+        # Build yt-dlp options based on Audio or Video
+        if is_video:
+            # Video stream resolution mapping
+            if audio_quality == '1080':
+                stream_format = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+            elif audio_quality == '720':
+                stream_format = 'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+            elif audio_quality == '480':
+                stream_format = 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+            elif audio_quality == '360':
+                stream_format = 'bestvideo[height<=360]+bestaudio/best[height<=360]/best'
+            else:
+                stream_format = 'bestvideo+bestaudio/best'
+
+            postprocessors = [
+                {
+                    'key': 'FFmpegMetadata',
+                    'add_metadata': True,
+                }
+            ]
+        else:
+            stream_format = 'bestaudio/best'
+            postprocessors = [
+                {
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': audio_format,
+                    'preferredquality': audio_quality if audio_format == 'mp3' else None,
+                    'nopostoverwrites': False,
+                },
+                {
+                    'key': 'FFmpegMetadata',
+                    'add_metadata': True,
+                }
+            ]
 
         ffmpeg_bin = FFmpegDetector.get_ffmpeg_path()
         out_template = os.path.join(output_dir, f"%(title)s_{task_id[:8]}.%(ext)s")
 
         ydl_opts = {
-            'format': 'bestaudio/best',
+            'format': stream_format,
             'outtmpl': out_template,
             'postprocessors': postprocessors,
             'progress_hooks': [progress_hook],
@@ -395,6 +419,9 @@ class DownloadTaskManager:
                 'Accept-Language': 'en-US,en;q=0.9',
             },
         }
+
+        if is_video:
+            ydl_opts['merge_output_format'] = audio_format
 
         if ffmpeg_bin:
             ydl_opts['ffmpeg_location'] = ffmpeg_bin
