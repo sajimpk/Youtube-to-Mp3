@@ -22,13 +22,22 @@ class FFmpegDetector:
 
     @staticmethod
     def get_ffmpeg_path() -> Optional[str]:
-        """Check if ffmpeg executable is available in PATH or common directories."""
-        # 1. Standard PATH (Linux / Railway container / Windows PATH)
+        """Check if ffmpeg executable is available in imageio_ffmpeg, PATH, or directories."""
+        # 1. Check Python bundled imageio_ffmpeg (100% reliable on Railway & Cloud)
+        try:
+            import imageio_ffmpeg
+            exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if exe and os.path.exists(exe):
+                return exe
+        except Exception:
+            pass
+
+        # 2. Standard PATH (Linux / Railway container / Windows PATH)
         ffmpeg_bin = shutil.which("ffmpeg")
         if ffmpeg_bin:
             return ffmpeg_bin
 
-        # 2. Local project or common Windows paths
+        # 3. Local project or common Windows/Linux paths
         base_dir = str(settings.BASE_DIR)
         common_paths = [
             os.path.join(base_dir, "ffmpeg.exe"),
@@ -36,6 +45,7 @@ class FFmpegDetector:
             os.path.join(base_dir, "bin", "ffmpeg.exe"),
             "/usr/bin/ffmpeg",
             "/usr/local/bin/ffmpeg",
+            "/nix/var/nix/profiles/default/bin/ffmpeg",
             r"C:\ffmpeg\bin\ffmpeg.exe",
             r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
             os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-*\bin\ffmpeg.exe"),
@@ -364,8 +374,6 @@ class DownloadTaskManager:
         ]
 
         ffmpeg_bin = FFmpegDetector.get_ffmpeg_path()
-        ffmpeg_location = os.path.dirname(ffmpeg_bin) if ffmpeg_bin else None
-
         out_template = os.path.join(output_dir, f"%(title)s_{task_id[:8]}.%(ext)s")
 
         ydl_opts = {
@@ -388,8 +396,8 @@ class DownloadTaskManager:
             },
         }
 
-        if ffmpeg_location:
-            ydl_opts['ffmpeg_location'] = ffmpeg_location
+        if ffmpeg_bin:
+            ydl_opts['ffmpeg_location'] = ffmpeg_bin
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:

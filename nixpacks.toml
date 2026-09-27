@@ -1,6 +1,7 @@
 # Nixpacks configuration for Railway deployment
 [phases.setup]
-nixPkgs = ["python311", "ffmpeg"]
+nixPkgs = ["ffmpeg"]
+aptPkgs = ["ffmpeg"]
 
 [phases.build]
 cmds = [
