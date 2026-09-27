@@ -17,11 +17,7 @@
     {% load static %}
     <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
 </head>
-<body class="dark-theme">
-    <!-- Background Glow Blobs -->
-    <div class="blob-bg blob-1"></div>
-    <div class="blob-bg blob-2"></div>
-    <div class="blob-bg blob-3"></div>
+<body class="clean-light-theme">
 
     <!-- Navigation Header -->
     <header class="navbar">
@@ -33,18 +29,18 @@
                 </div>
                 <div class="brand-text">
                     <span class="brand-title">Audio<span class="highlight">Tube</span></span>
-                    <span class="brand-subtitle">Pro YouTube to MP3 Converter</span>
+                    <span class="brand-subtitle">Fast YouTube to MP3 Converter</span>
                 </div>
             </a>
 
             <div class="nav-actions">
                 {% if ffmpeg_available %}
-                <div class="status-pill status-ready" title="FFmpeg media engine is active">
+                <div class="status-pill status-ready" title="FFmpeg engine active">
                     <span class="status-dot"></span>
                     <i class="fa-solid fa-bolt"></i> FFmpeg Ready
                 </div>
                 {% else %}
-                <div class="status-pill status-warning" id="btn-open-ffmpeg-modal" title="Click for FFmpeg setup guide">
+                <div class="status-pill status-warning" id="btn-open-ffmpeg-modal" title="Click for FFmpeg info">
                     <span class="status-dot warning"></span>
                     <i class="fa-solid fa-triangle-exclamation"></i> FFmpeg Missing
                 </div>
@@ -65,8 +61,8 @@
     <!-- Footer -->
     <footer class="footer">
         <div class="container footer-container">
-            <p>© {{ now|date:"Y" }} AudioTube Pro. Built with Django & yt-dlp. Pure high-fidelity audio streams.</p>
-            <p class="footer-sub">For personal and educational use. Respect copyright and YouTube Terms of Service.</p>
+            <p>© {{ now|date:"Y" }} AudioTube Pro • High Quality Audio Downloader</p>
+            <p class="footer-sub">For personal and educational use. Respect copyright & YouTube Terms of Service.</p>
         </div>
     </footer>
 
