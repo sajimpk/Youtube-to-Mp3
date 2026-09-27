@@ -1,5 +1,6 @@
 """
-Backend services for YouTube audio downloading, FFmpeg integration, and task tracking.
+Backend services for YouTube audio downloading, FFmpeg integration, and database task management.
+Engineered for reliable multi-process execution under Gunicorn on cloud hosts like Railway.
 """
 
 import os
@@ -11,25 +12,30 @@ import threading
 from datetime import datetime
 from typing import Dict, Any, Optional
 from django.conf import settings
+from django.db import connection
 
 import yt_dlp
 
 
 class FFmpegDetector:
-    """Detects FFmpeg installation and provides lookup paths."""
+    """Detects FFmpeg installation on Windows and Linux/Railway."""
 
     @staticmethod
     def get_ffmpeg_path() -> Optional[str]:
-        """Check if ffmpeg executable is available in PATH or common Windows directories."""
+        """Check if ffmpeg executable is available in PATH or common directories."""
+        # 1. Standard PATH (Linux / Railway container / Windows PATH)
         ffmpeg_bin = shutil.which("ffmpeg")
         if ffmpeg_bin:
             return ffmpeg_bin
 
-        # Common locations on Windows
+        # 2. Local project or common Windows paths
         base_dir = str(settings.BASE_DIR)
         common_paths = [
             os.path.join(base_dir, "ffmpeg.exe"),
+            os.path.join(base_dir, "ffmpeg"),
             os.path.join(base_dir, "bin", "ffmpeg.exe"),
+            "/usr/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
             r"C:\ffmpeg\bin\ffmpeg.exe",
             r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
             os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-*\bin\ffmpeg.exe"),
@@ -115,6 +121,7 @@ class VideoInfoFetcher:
             raise ValueError("Invalid YouTube URL. Please enter a valid YouTube video or Shorts link.")
 
         clean_url = URLValidator.clean_url(url)
+        
         ydl_opts = {
             'extract_flat': False,
             'skip_download': True,
@@ -123,6 +130,12 @@ class VideoInfoFetcher:
             'ignoreerrors': False,
             'noplaylist': True,
             'socket_timeout': 15,
+            'geo_bypass': True,
+            'nocheckcertificate': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
         }
 
         try:
@@ -131,7 +144,6 @@ class VideoInfoFetcher:
                 if not info:
                     raise ValueError("Could not retrieve video details. Video may be private or unavailable.")
 
-                # Extract best thumbnail
                 thumbnails = info.get('thumbnails', [])
                 best_thumbnail = info.get('thumbnail')
                 if thumbnails:
@@ -162,11 +174,13 @@ class VideoInfoFetcher:
             if "Private video" in err_msg:
                 raise ValueError("This video is private and cannot be accessed.")
             elif "Sign in to confirm your age" in err_msg or "age-restricted" in err_msg.lower():
-                raise ValueError("This video is age-restricted and requires user authentication.")
+                raise ValueError("This video is age-restricted.")
             elif "Video unavailable" in err_msg:
                 raise ValueError("This video is unavailable (may have been deleted or blocked).")
             elif "HTTP Error 404" in err_msg:
                 raise ValueError("Video not found (404).")
+            elif "Sign in" in err_msg or "bot" in err_msg.lower():
+                raise ValueError("YouTube bot protection encountered. Please try again.")
             else:
                 clean_err = re.sub(r'ERROR:\s*(\[.*?\])?', '', err_msg).strip()
                 raise ValueError(clean_err)
@@ -175,52 +189,58 @@ class VideoInfoFetcher:
 
 
 class DownloadTaskManager:
-    """Manages active background download tasks and progress state in memory."""
-
-    _tasks: Dict[str, Dict[str, Any]] = {}
-    _lock = threading.Lock()
+    """Manages active tasks backed by the database for shared Gunicorn multi-worker access."""
 
     @classmethod
     def create_task(cls, url: str, audio_format: str, quality: str) -> str:
+        from core.models import DownloadTask
         task_id = str(uuid.uuid4())
-        with cls._lock:
-            cls._tasks[task_id] = {
-                'id': task_id,
-                'url': url,
-                'format': audio_format.lower(),
-                'quality': quality,
-                'status': 'starting',
-                'progress': 0,
-                'speed': '0 MB/s',
-                'size': '0 MB',
-                'eta': '--:--',
-                'message': 'Connecting to YouTube...',
-                'file_path': None,
-                'file_name': None,
-                'file_size': None,
-                'title': None,
-                'channel': None,
-                'thumbnail_url': None,
-                'duration_str': None,
-                'error': None,
-                'completed': False,
-                'created_at': datetime.now()
-            }
+        DownloadTask.objects.create(
+            task_id=task_id,
+            url=url,
+            audio_format=audio_format.lower(),
+            quality=quality,
+            status='starting',
+            progress=0.0,
+            message='Connecting to YouTube...'
+        )
         return task_id
 
     @classmethod
     def get_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
-        with cls._lock:
-            task = cls._tasks.get(task_id)
-            if task:
-                return dict(task)
+        from core.models import DownloadTask
+        task = DownloadTask.objects.filter(task_id=task_id).first()
+        if not task:
             return None
+        return {
+            'id': task.task_id,
+            'url': task.url,
+            'format': task.audio_format,
+            'quality': task.quality,
+            'status': task.status,
+            'progress': task.progress,
+            'speed': task.speed,
+            'size': task.size,
+            'eta': task.eta,
+            'message': task.message,
+            'file_path': task.file_path,
+            'file_name': task.file_name,
+            'file_size': task.file_size,
+            'title': task.title,
+            'channel': task.channel,
+            'thumbnail_url': task.thumbnail_url,
+            'duration_str': task.duration_str,
+            'error': task.error,
+            'completed': task.completed,
+        }
 
     @classmethod
     def update_task(cls, task_id: str, **kwargs):
-        with cls._lock:
-            if task_id in cls._tasks:
-                cls._tasks[task_id].update(kwargs)
+        from core.models import DownloadTask
+        try:
+            DownloadTask.objects.filter(task_id=task_id).update(**kwargs)
+        except Exception:
+            pass
 
     @classmethod
     def run_download_async(cls, task_id: str):
@@ -229,13 +249,16 @@ class DownloadTaskManager:
 
     @classmethod
     def _execute_download(cls, task_id: str):
-        task = cls.get_task(task_id)
+        connection.close()  # Ensure clean connection in new thread
+        from core.models import DownloadTask, DownloadRecord
+
+        task = DownloadTask.objects.filter(task_id=task_id).first()
         if not task:
             return
 
-        url = task['url']
-        audio_format = task['format']
-        audio_quality = task['quality']
+        url = task.url
+        audio_format = task.audio_format
+        audio_quality = task.quality
         output_dir = os.path.join(settings.MEDIA_ROOT, 'audio_downloads')
         os.makedirs(output_dir, exist_ok=True)
 
@@ -323,7 +346,7 @@ class DownloadTaskManager:
                     task_id,
                     status='finalizing',
                     progress=99.0,
-                    message="Finalizing ID3 metadata tags..."
+                    message="Finalizing audio tags & metadata..."
                 )
 
         # Build yt-dlp options
@@ -357,6 +380,12 @@ class DownloadTaskManager:
             'windowsfilenames': True,
             'overwrites': True,
             'socket_timeout': 30,
+            'geo_bypass': True,
+            'nocheckcertificate': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
         }
 
         if ffmpeg_location:
@@ -366,7 +395,7 @@ class DownloadTaskManager:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 if not info:
-                    raise Exception("Failed to retrieve audio stream.")
+                    raise Exception("Failed to retrieve audio stream from YouTube.")
 
                 title = info.get('title', 'Audio Track')
                 channel = info.get('uploader') or info.get('channel', 'Unknown Artist')
@@ -374,10 +403,8 @@ class DownloadTaskManager:
                 duration_str = VideoInfoFetcher.format_duration(duration_sec)
                 thumbnail_url = info.get('thumbnail', '')
 
-                # Find final output file on disk
                 final_path = downloaded_file['path']
                 if not final_path or not os.path.exists(final_path):
-                    # Look in output_dir with task_id snippet
                     matches = [
                         os.path.join(output_dir, f)
                         for f in os.listdir(output_dir)
@@ -399,8 +426,6 @@ class DownloadTaskManager:
                 file_name = os.path.basename(final_path)
                 file_size_str = format_sz(file_size_bytes)
 
-                # Save record in database
-                from core.models import DownloadRecord
                 try:
                     DownloadRecord.objects.create(
                         title=title,
@@ -435,10 +460,15 @@ class DownloadTaskManager:
 
         except yt_dlp.utils.DownloadError as e:
             err_str = str(e)
-            if "ffmpeg not found" in err_str.lower():
-                msg = "FFmpeg is missing on the server. Required for MP3/WAV extraction."
+            if "ffmpeg not found" in err_str.lower() or "ffprobe not found" in err_str.lower():
+                msg = "FFmpeg is missing on the server. Required for MP3/WAV conversion."
+            elif "Sign in" in err_str or "bot" in err_str.lower():
+                msg = "YouTube temporarily rate-limited the cloud IP. Please try again in a moment."
             else:
-                msg = re.sub(r'ERROR:\s*(\[.*?\])?', '', err_str).strip()
+                clean_err = re.sub(r'ERROR:\s*(\[.*?\])?', '', err_str).strip()
+                msg = clean_err
             cls.update_task(task_id, status='error', error=msg, message=f"Error: {msg}")
         except Exception as e:
             cls.update_task(task_id, status='error', error=str(e), message=f"Error: {str(e)}")
+        finally:
+            connection.close()

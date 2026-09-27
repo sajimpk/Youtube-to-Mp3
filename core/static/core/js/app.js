@@ -236,13 +236,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function pollProgress(taskId) {
         if (activePollInterval) clearInterval(activePollInterval);
 
+        let consecutiveErrors = 0;
+
         activePollInterval = setInterval(async () => {
             try {
                 const res = await fetch(`/api/progress/${taskId}/`);
-                if (!res.ok) throw new Error('Task error or expired');
+                const data = await res.json().catch(() => ({}));
 
-                const data = await res.json();
-                if (!data.success) throw new Error(data.error || 'Download failed');
+                if (!res.ok) {
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= 3) {
+                        throw new Error(data.error || 'Task error or connection timeout');
+                    }
+                    return; // Retry on next tick
+                }
+
+                consecutiveErrors = 0; // Reset error counter on success
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Download failed');
+                }
 
                 const pct = Math.min(Math.max(data.progress || 0, 0), 100);
                 progressBarFill.style.width = `${pct}%`;
