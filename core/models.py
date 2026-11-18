@@ -21,6 +21,8 @@ class DownloadTask(models.Model):
     channel = models.CharField(max_length=255, blank=True, null=True)
     thumbnail_url = models.URLField(max_length=1000, blank=True, null=True)
     duration_str = models.CharField(max_length=50, blank=True, null=True)
+    reverb_bypass = models.BooleanField(default=False)
+    reverb_preset = models.CharField(max_length=50, default='studio')
     error = models.TextField(blank=True, null=True)
     completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -45,6 +47,8 @@ class DownloadRecord(models.Model):
     file_path = models.CharField(max_length=1000)
     file_size = models.CharField(max_length=50, default='0 MB')
     file_size_bytes = models.BigIntegerField(default=0)
+    reverb_bypass = models.BooleanField(default=False)
+    reverb_preset = models.CharField(max_length=50, default='studio')
     thumbnail_url = models.URLField(max_length=1000, blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
 

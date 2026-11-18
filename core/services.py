@@ -9,6 +9,7 @@ import sys
 import uuid
 import shutil
 import threading
+import subprocess
 from datetime import datetime
 from typing import Dict, Any, Optional
 from django.conf import settings
@@ -198,11 +199,123 @@ class VideoInfoFetcher:
             raise Exception(f"Failed to fetch video details: {str(e)}")
 
 
+class AudioEffectsProcessor:
+    """
+    Applies Reverb and YouTube Audio Copyright (Content ID) bypass filters via FFmpeg.
+    Modifies acoustic fingerprint (frequencies, peaks, stereo depth, spatial reflections)
+    while preserving high-fidelity audio aesthetics.
+    For videos (MP4/MKV), the video stream is kept lossless (-c:v copy) and only the audio stream is modified.
+    """
+
+    PRESETS = {
+        'studio': {
+            'name': 'Studio Reverb + Pitch Shift',
+            'desc': 'Micro-pitch shift (+2.8%) with crystal studio reverberation to break Content ID fingerprint.',
+            'filter_audio': 'aresample=44100,asetrate=44100*1.028,aresample=44100,atempo=1/1.028,aecho=0.8:0.75:35|50:0.35|0.22,equalizer=f=1200:t=q:w=1.2:g=1.5,bass=g=1.5:f=100,extrastereo=m=1.15',
+            'filter_video': 'aresample=44100,asetrate=44100*1.028,aresample=44100,atempo=1/1.028,aecho=0.8:0.75:35|50:0.35|0.22,equalizer=f=1200:t=q:w=1.2:g=1.5,bass=g=1.5:f=100,extrastereo=m=1.15',
+        },
+        'slowed': {
+            'name': 'Slowed + Reverb (Lo-Fi)',
+            'desc': 'Slowed tempo (~0.92x) with lush deep atmospheric reverb.',
+            'filter_audio': 'aresample=44100,asetrate=44100*0.92,aresample=44100,aecho=0.8:0.8:50|80:0.4|0.3,equalizer=f=800:t=q:w=1.0:g=2,bass=g=3:f=90,extrastereo=m=1.25',
+            'filter_video': 'aresample=44100,asetrate=44100*0.95,aresample=44100,atempo=1/0.95,aecho=0.8:0.8:50|80:0.4|0.3,equalizer=f=800:t=q:w=1.0:g=2,bass=g=3:f=90,extrastereo=m=1.25',
+        },
+        'spedup': {
+            'name': 'Sped Up + Reverb (Nightcore)',
+            'desc': 'Sped up tempo (~1.08x) with crisp reverb reflections.',
+            'filter_audio': 'aresample=44100,asetrate=44100*1.08,aresample=44100,aecho=0.8:0.7:30|50:0.3|0.2,equalizer=f=2000:t=q:w=1.0:g=1.5,extrastereo=m=1.15',
+            'filter_video': 'aresample=44100,asetrate=44100*1.05,aresample=44100,atempo=1/1.05,aecho=0.8:0.7:30|50:0.3|0.2,equalizer=f=2000:t=q:w=1.0:g=1.5,extrastereo=m=1.15',
+        },
+        'reverb_only': {
+            'name': 'Deep Reverb Only',
+            'desc': 'Pure multi-stage acoustic reverberation.',
+            'filter_audio': 'aecho=0.8:0.78:40|65:0.38|0.24,extrastereo=m=1.15',
+            'filter_video': 'aecho=0.8:0.78:40|65:0.38|0.24,extrastereo=m=1.15',
+        }
+    }
+
+    @classmethod
+    def get_filter(cls, preset_key: str, is_video: bool = False) -> str:
+        preset = cls.PRESETS.get(preset_key, cls.PRESETS['studio'])
+        return preset['filter_video'] if is_video else preset['filter_audio']
+
+    @classmethod
+    def apply_reverb_bypass(
+        cls,
+        input_path: str,
+        output_format: str,
+        quality: str,
+        preset: str = 'studio',
+        ffmpeg_bin: Optional[str] = None
+    ) -> str:
+        if not ffmpeg_bin:
+            ffmpeg_bin = FFmpegDetector.get_ffmpeg_path()
+            if not ffmpeg_bin:
+                raise Exception("FFmpeg executable not found for audio processing.")
+
+        is_video = output_format.lower() in ['mp4', 'mkv']
+        audio_filter = cls.get_filter(preset, is_video=is_video)
+
+        dirname, filename = os.path.split(input_path)
+        base, ext = os.path.splitext(filename)
+        clean_base = re.sub(r'_(reverb|bypass|safe)+', '', base, flags=re.IGNORECASE)
+        target_ext = f".{output_format.lower()}" if output_format else ext
+        output_path = os.path.join(dirname, f"{clean_base}_reverb_bypass{target_ext}")
+
+        if is_video:
+            # Video stream copied directly without re-encoding (-c:v copy)
+            # Only audio stream is processed with reverb & copyright bypass filter
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-i", input_path,
+                "-c:v", "copy",
+                "-af", audio_filter,
+                "-c:a", "aac",
+                "-b:a", "192k",
+                output_path
+            ]
+        else:
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-i", input_path,
+                "-af", audio_filter,
+            ]
+            fmt = output_format.lower()
+            if fmt == 'mp3':
+                bitrate = f"{quality}k" if quality in ['320', '192', '128'] else "320k"
+                cmd.extend(["-c:a", "libmp3lame", "-b:a", bitrate])
+            elif fmt == 'm4a':
+                cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            elif fmt == 'wav':
+                cmd.extend(["-c:a", "pcm_s16le"])
+            else:
+                cmd.extend(["-c:a", "libmp3lame", "-b:a", "320k"])
+
+            cmd.append(output_path)
+
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            err_text = proc.stderr.decode('utf-8', errors='ignore')
+            raise Exception(f"FFmpeg audio processing failed: {err_text[-300:] if err_text else 'Unknown error'}")
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise Exception("Processed file was not created properly by FFmpeg.")
+
+        try:
+            os.remove(input_path)
+        except Exception:
+            pass
+
+        return output_path
+
+
 class DownloadTaskManager:
     """Manages active tasks backed by the database for shared Gunicorn multi-worker access."""
 
     @classmethod
-    def create_task(cls, url: str, audio_format: str, quality: str) -> str:
+    def create_task(cls, url: str, audio_format: str, quality: str, reverb_bypass: bool = False, reverb_preset: str = 'studio') -> str:
         from core.models import DownloadTask
         task_id = str(uuid.uuid4())
         DownloadTask.objects.create(
@@ -210,6 +323,8 @@ class DownloadTaskManager:
             url=url,
             audio_format=audio_format.lower(),
             quality=quality,
+            reverb_bypass=reverb_bypass,
+            reverb_preset=reverb_preset,
             status='starting',
             progress=0.0,
             message='Connecting to YouTube...'
@@ -227,6 +342,8 @@ class DownloadTaskManager:
             'url': task.url,
             'format': task.audio_format,
             'quality': task.quality,
+            'reverb_bypass': task.reverb_bypass,
+            'reverb_preset': task.reverb_preset,
             'status': task.status,
             'progress': task.progress,
             'speed': task.speed,
@@ -269,6 +386,8 @@ class DownloadTaskManager:
         url = task.url
         audio_format = task.audio_format
         audio_quality = task.quality
+        reverb_bypass = getattr(task, 'reverb_bypass', False)
+        reverb_preset = getattr(task, 'reverb_preset', 'studio')
         output_dir = os.path.join(settings.MEDIA_ROOT, 'audio_downloads')
         os.makedirs(output_dir, exist_ok=True)
 
@@ -450,6 +569,22 @@ class DownloadTaskManager:
                     else:
                         raise Exception("Output audio file was not generated.")
 
+                if reverb_bypass:
+                    preset_info = AudioEffectsProcessor.PRESETS.get(reverb_preset, AudioEffectsProcessor.PRESETS['studio'])
+                    cls.update_task(
+                        task_id,
+                        status='converting',
+                        progress=98.0,
+                        message=f"Applying {preset_info['name']} & Anti-Copyright filter..."
+                    )
+                    final_path = AudioEffectsProcessor.apply_reverb_bypass(
+                        input_path=final_path,
+                        output_format=audio_format,
+                        quality=audio_quality,
+                        preset=reverb_preset,
+                        ffmpeg_bin=ffmpeg_bin
+                    )
+
                 file_size_bytes = os.path.getsize(final_path)
                 def format_sz(b: int) -> str:
                     if b > 1_048_576:
@@ -462,28 +597,32 @@ class DownloadTaskManager:
                 file_size_str = format_sz(file_size_bytes)
 
                 try:
+                    display_quality = f"{audio_quality} kbps" if audio_format == 'mp3' else ('Default' if not is_video else f"{audio_quality}p")
                     DownloadRecord.objects.create(
                         title=title,
                         channel=channel,
                         url=url,
                         duration_str=duration_str,
                         audio_format=audio_format.upper(),
-                        quality=f"{audio_quality} kbps" if audio_format == 'mp3' else 'Default',
+                        quality=display_quality,
                         file_name=file_name,
                         file_path=final_path,
                         file_size=file_size_str,
                         file_size_bytes=file_size_bytes,
-                        thumbnail_url=thumbnail_url
+                        thumbnail_url=thumbnail_url,
+                        reverb_bypass=reverb_bypass,
+                        reverb_preset=reverb_preset
                     )
                 except Exception as db_err:
                     print(f"Warning: Database record save error: {db_err}", file=sys.stderr)
 
+                complete_msg = "Download, Reverb & Anti-Copyright processing complete!" if reverb_bypass else "Download and conversion complete!"
                 cls.update_task(
                     task_id,
                     status='completed',
                     progress=100.0,
                     completed=True,
-                    message="Download and conversion complete!",
+                    message=complete_msg,
                     file_path=final_path,
                     file_name=file_name,
                     file_size=file_size_str,

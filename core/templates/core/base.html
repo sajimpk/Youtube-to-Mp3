@@ -15,7 +15,8 @@
     
     <!-- Custom CSS -->
     {% load static %}
-    <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'core/css/style.css' %}?v=2.1">
+    {% block extra_css %}{% endblock %}
 </head>
 <body class="clean-light-theme">
 

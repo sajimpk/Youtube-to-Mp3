@@ -41,6 +41,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnRefreshHistory = document.getElementById('btn-refresh-history');
     const btnClearHistory = document.getElementById('btn-clear-history');
 
+    const toggleReverbBypass = document.getElementById('toggle-reverb-bypass');
+    const reverbPresetSection = document.getElementById('reverb-preset-section');
+    const reverbPresetSelector = document.getElementById('reverb-preset-selector');
+    const presetActiveDesc = document.getElementById('preset-active-desc');
+    const videoBypassNote = document.getElementById('video-bypass-note');
+    const successReverbBadge = document.getElementById('success-reverb-badge');
+
     const ffmpegModal = document.getElementById('ffmpeg-modal');
     const btnOpenFfmpegModal = document.getElementById('btn-open-ffmpeg-modal');
     const btnCloseFfmpegModal = document.getElementById('btn-close-ffmpeg-modal');
@@ -49,8 +56,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // State Variables
     let selectedFormat = 'mp3';
     let selectedQuality = '320';
+    let isReverbBypass = false;
+    let selectedReverbPreset = 'studio';
     let activePollInterval = null;
     let isDownloading = false;
+
+    const presetDescriptions = {
+        studio: 'Micro-pitch shift (+2.8%) + studio acoustic reverb (breaks Content ID fingerprint while keeping sound natural)',
+        slowed: 'Slowed tempo (~0.92x) with ambient lush reverb (viral Lo-Fi vibe, 100% Content ID bypass)',
+        spedup: 'Sped up tempo (~1.08x) with crisp reverb (Nightcore aesthetic, alters rhythm & pitch)',
+        reverb_only: 'Pure multi-stage acoustic reverberation without changing pitch or tempo'
+    };
 
     // --- URL Regex Validator ---
     const YT_REGEX = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
@@ -151,8 +167,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedQuality = '320';
                 if (btnDownloadText) btnDownloadText.textContent = `Start Audio Download (${selectedFormat.toUpperCase()})`;
             }
+
+            if (videoBypassNote) {
+                videoBypassNote.style.display = (selectedFormat === 'mp4') ? 'flex' : 'none';
+            }
         });
     });
+
+    // --- Reverb & Anti-Copyright Event Listeners ---
+    if (toggleReverbBypass) {
+        toggleReverbBypass.addEventListener('change', () => {
+            isReverbBypass = toggleReverbBypass.checked;
+            if (reverbPresetSection) {
+                reverbPresetSection.style.display = isReverbBypass ? 'block' : 'none';
+            }
+            if (isReverbBypass) {
+                showToast('Reverb & Audio Copyright Bypass enabled!', 'info');
+            }
+        });
+    }
+
+    if (reverbPresetSelector) {
+        reverbPresetSelector.querySelectorAll('.pill-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                reverbPresetSelector.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedReverbPreset = btn.getAttribute('data-preset');
+                if (presetActiveDesc && presetDescriptions[selectedReverbPreset]) {
+                    presetActiveDesc.textContent = presetDescriptions[selectedReverbPreset];
+                }
+            });
+        });
+    }
 
     audioQualitySelector.querySelectorAll('.pill-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -248,6 +294,8 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('url', url);
             formData.append('format', selectedFormat);
             formData.append('quality', selectedQuality);
+            formData.append('reverb_bypass', isReverbBypass ? 'true' : 'false');
+            formData.append('reverb_preset', selectedReverbPreset);
 
             const res = await fetch('/api/download/', {
                 method: 'POST',
@@ -320,7 +368,10 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBox.style.display = 'none';
 
         successTitle.textContent = data.title || 'Audio File Ready';
-        successMeta.textContent = `${selectedFormat.toUpperCase()} (${selectedQuality}kbps) • ${data.file_size || 'Ready'}`;
+        successMeta.textContent = `${selectedFormat.toUpperCase()} (${selectedQuality}${selectedFormat === 'mp4' ? 'p' : 'kbps'}) • ${data.file_size || 'Ready'}`;
+        if (successReverbBadge) {
+            successReverbBadge.style.display = data.reverb_bypass ? 'inline-flex' : 'none';
+        }
         btnDirectDownload.href = data.download_url;
         btnDirectDownload.setAttribute('download', data.file_name || 'audio.mp3');
 
@@ -380,6 +431,9 @@ document.addEventListener('DOMContentLoaded', () => {
         let html = '';
         items.forEach(item => {
             const fmt = (item.format || 'MP3').toLowerCase();
+            const reverbBadgeHtml = item.reverb_bypass 
+                ? `<span class="badge-history-reverb"><i class="fa-solid fa-wand-magic-sparkles"></i> Reverb & Bypass</span>`
+                : '';
             html += `
                 <div class="history-item">
                     <div class="history-badge badge-${fmt}">
@@ -391,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span><i class="fa-regular fa-user"></i> ${escapeHtml(item.channel)}</span>
                             <span>• ${item.quality}</span>
                             <span>• ${item.file_size}</span>
+                            ${reverbBadgeHtml}
                             <span>• ${item.created_at}</span>
                         </div>
                     </div>

@@ -1,0 +1,16 @@
+# ১. সিস্টেম আপডেট ও FFmpeg ইনস্টল (রিকমেন্ডেড)
+sudo apt update && sudo apt install -y ffmpeg python3-pip python3-venv
+
+# ২. প্রোজেক্টে ভার্চুয়াল এনভায়রনমেন্ট তৈরি ও একটিভ করা
+python3 -m venv env
+source env/bin/activate
+
+# ৩. রিকয়ারমেন্টস ইনস্টল
+pip install -r requirements.txt
+
+# ৪. ডাটাবেস মাইগ্রেশন ও স্ট্যাটিক ফাইলস কালেক্ট
+python manage.py migrate
+python manage.py collectstatic --noinput
+
+# ৫. সার্ভার চালু করা (Gunicorn দিয়ে)
+gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 8 --timeout 180

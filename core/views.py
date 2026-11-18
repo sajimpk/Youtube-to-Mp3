@@ -69,8 +69,21 @@ def api_start_download(request):
     if quality not in allowed_qualities:
         quality = '1080' if audio_format in ['mp4', 'mkv'] else '320'
 
+    reverb_bypass_raw = request.POST.get('reverb_bypass', 'false').strip().lower()
+    reverb_bypass = reverb_bypass_raw in ['true', '1', 'yes', 'on']
+    reverb_preset = request.POST.get('reverb_preset', 'studio').strip().lower()
+    allowed_presets = ['studio', 'slowed', 'spedup', 'reverb_only']
+    if reverb_preset not in allowed_presets:
+        reverb_preset = 'studio'
+
     # Create task and launch asynchronous downloader
-    task_id = DownloadTaskManager.create_task(url, audio_format, quality)
+    task_id = DownloadTaskManager.create_task(
+        url,
+        audio_format,
+        quality,
+        reverb_bypass=reverb_bypass,
+        reverb_preset=reverb_preset
+    )
     DownloadTaskManager.run_download_async(task_id)
 
     return JsonResponse({
@@ -103,6 +116,8 @@ def api_check_progress(request, task_id):
         'file_name': task.get('file_name'),
         'file_size': task.get('file_size'),
         'thumbnail_url': task.get('thumbnail_url'),
+        'reverb_bypass': task.get('reverb_bypass', False),
+        'reverb_preset': task.get('reverb_preset', 'studio'),
     }
 
     if task.get('completed'):
@@ -148,6 +163,8 @@ def api_get_history(request):
             'quality': r.quality,
             'file_size': r.file_size,
             'duration_str': r.duration_str,
+            'reverb_bypass': getattr(r, 'reverb_bypass', False),
+            'reverb_preset': getattr(r, 'reverb_preset', 'studio'),
             'created_at': r.created_at.strftime("%Y-%m-%d %H:%M"),
             'file_name': r.file_name,
             'thumbnail_url': r.thumbnail_url or '',
